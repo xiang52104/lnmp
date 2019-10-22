@@ -1,0 +1,42 @@
+#客户端服务端安装lnmp
+ cat new_lnmp.sh 
+#!/bin/bash
+path=/usr/local/nginx
+yum -y install gcc pcre-devel openssl-devel
+tar -xf lnmp_soft.tar.gz
+cd lnmp_soft/
+tar -xf nginx-1.12.2.tar.gz
+cd nginx-1.12.2
+./configure \
+--with-http_ssl_module
+make & make install
+$path/sbin/nginx
+yum -y install mariadb mariadb-server mariadb-devel
+yum -y install php php-fpm php-mysql
+systemctl restart php-fpm mariadb
+systemctl enable php-fpm mariadb
+#代理服务端安装memcached，配置upstream
+yum -y install memcached
+systemctl restart memcached
+systemctl enable memcached    
+upstream webs {
+        server 192.168.2.100:80;
+        server 192.168.2.200:80;
+        }
+proxy_pass http://webs;
+
+#客户端配置动静分离
+cat php_split.sh 
+#!/bin/bash
+sed -i '65,71s/#//' /usr/local/nginx/conf/nginx.conf
+sed -i '/fastcgi_param  SC/s/^/#/' /usr/local/nginx/conf/nginx.conf
+sed -i 's/fastcgi_params/fastcgi.conf/' /usr/local/nginx/conf/nginx.conf
+netstat -anptu | grep 80 > /dev/null
+[ $? -eq 0 ] && /usr/local/nginx/sbin/nginx -s reload || /usr/local/nginx/sbin/nginx 
+#客户端配置php-fpm
+cat mem_configure.sh 
+#!/bin/bash
+yum -y install php-memcache
+sed -i '/session.save_ha/s/files/memcache/' /etc/php-fpm.d/www.conf
+sed  -i '/session.save_p/s#/var/lib/php/session#"tcp://192.168.2.5:11211"#' /etc/php-fpm.d/www.conf 
+systemctl restart php-fpm
